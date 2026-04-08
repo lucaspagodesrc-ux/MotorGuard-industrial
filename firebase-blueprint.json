@@ -1,0 +1,130 @@
+{
+  "entities": {
+    "Measurement": {
+      "title": "Motor Measurement",
+      "description": "A record of motor health measurements including isolation and ohmic resistance.",
+      "type": "object",
+      "properties": {
+        "area": {
+          "type": "string",
+          "description": "Operational area (e.g., Compressor A1)"
+        },
+        "equipment": {
+          "type": "string",
+          "description": "Equipment name or ID"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Time of measurement"
+        },
+        "isolation": {
+          "type": "number",
+          "description": "Isolation resistance in mΩ"
+        },
+        "ohmicAB": {
+          "type": "number",
+          "description": "Ohmic resistance phase AB in µΩ"
+        },
+        "ohmicAC": {
+          "type": "number",
+          "description": "Ohmic resistance phase AC in µΩ"
+        },
+        "ohmicBC": {
+          "type": "number",
+          "description": "Ohmic resistance phase BC in µΩ"
+        },
+        "operator": {
+          "type": "string",
+          "description": "Name of the operator who took the measurement"
+        },
+        "uid": {
+          "type": "string",
+          "description": "User ID of the operator"
+        }
+      },
+      "required": ["area", "equipment", "timestamp", "isolation", "ohmicAB", "ohmicAC", "ohmicBC", "operator", "uid"]
+    },
+    "Area": {
+      "title": "Operational Area",
+      "description": "A physical or logical area in the plant.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the area"
+        },
+        "uid": {
+          "type": "string",
+          "description": "User ID of the creator"
+        }
+      },
+      "required": ["name", "uid"]
+    },
+    "Equipment": {
+      "title": "Industrial Equipment",
+      "description": "A specific piece of equipment (e.g., a motor) located in an area.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name or ID of the equipment"
+        },
+        "areaId": {
+          "type": "string",
+          "description": "ID of the area where this equipment is located"
+        },
+        "uid": {
+          "type": "string",
+          "description": "User ID of the creator"
+        }
+      },
+      "required": ["name", "areaId", "uid"]
+    },
+    "User": {
+      "title": "User Profile",
+      "description": "A user profile record in the system.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User's email address"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User's display name"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "user"],
+          "description": "User's role in the system"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the user account was created"
+        }
+      },
+      "required": ["email", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/measurements/{measurementId}": {
+      "schema": "Measurement",
+      "description": "Collection of motor health measurements"
+    },
+    "/areas/{areaId}": {
+      "schema": "Area",
+      "description": "Collection of operational areas"
+    },
+    "/equipments/{equipmentId}": {
+      "schema": "Equipment",
+      "description": "Collection of industrial equipments"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "MotorGuard Industrial Dashboard",
+  "description": "A technical industrial monitoring dashboard for tracking motor health, performance trends, and maintenance logs.",
+  "requestFramePermissions": []
+}

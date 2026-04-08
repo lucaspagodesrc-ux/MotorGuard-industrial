@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: measurements
+    // Document ID: auto-generated
+    // Fields:
+    //   - area: string (required) - Operational area
+    //   - equipment: string (required) - Equipment name or ID
+    //   - timestamp: string (required, ISO 8601) - Time of measurement
+    //   - isolation: number (required) - Isolation resistance in mΩ
+    //   - ohmicAB: number (required) - Ohmic resistance phase AB in µΩ
+    //   - ohmicAC: number (required) - Ohmic resistance phase AC in µΩ
+    //   - ohmicBC: number (required) - Ohmic resistance phase BC in µΩ
+    //   - operator: string (required) - Name of the operator
+    //   - uid: string (required) - User ID of the operator
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        (request.auth.token.email == "lucaspagodesrc@gmail.com" && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidMeasurement(data) {
+      return data.keys().hasAll(['area', 'equipment', 'timestamp', 'isolation', 'ohmicAB', 'ohmicAC', 'ohmicBC', 'operator', 'uid']) &&
+             data.area is string && data.area.size() > 0 && data.area.size() < 100 &&
+             data.equipment is string && data.equipment.size() > 0 && data.equipment.size() < 100 &&
+             data.timestamp is string && data.timestamp.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$") &&
+             data.isolation is number && data.isolation >= 0 &&
+             data.ohmicAB is number && data.ohmicAB >= 0 &&
+             data.ohmicAC is number && data.ohmicAC >= 0 &&
+             data.ohmicBC is number && data.ohmicBC >= 0 &&
+             data.operator is string && data.operator.size() > 0 && data.operator.size() < 100 &&
+             data.uid == request.auth.uid;
+    }
+
+    function isValidArea(data) {
+      return data.keys().hasAll(['name', 'uid']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.uid == request.auth.uid;
+    }
+
+    function isValidEquipment(data) {
+      return data.keys().hasAll(['name', 'areaId', 'uid']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.areaId is string && data.areaId.size() > 0 &&
+             data.uid == request.auth.uid;
+    }
+
+    match /measurements/{measurementId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMeasurement(request.resource.data);
+      allow update: if isAuthenticated() && isValidMeasurement(request.resource.data) && (isOwner(resource.data.uid) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /areas/{areaId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidArea(request.resource.data);
+      allow update: if isAuthenticated() && isValidArea(request.resource.data) && (isOwner(resource.data.uid) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /equipments/{equipmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidEquipment(request.resource.data);
+      allow update: if isAuthenticated() && isValidEquipment(request.resource.data) && (isOwner(resource.data.uid) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner(userId) && request.resource.data.role == 'user';
+      allow delete: if isAdmin();
+    }
+  }
+}
