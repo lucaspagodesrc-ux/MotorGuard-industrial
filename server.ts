@@ -51,29 +51,13 @@ async function sendEmailReport(measurement: any) {
 
     const history = historySnap.docs.map(doc => doc.data()).reverse();
 
-    // 2. Trend Analysis
-    let status = "Estável";
-    let statusColor = "#4caf50"; // Green
-    let analysis = "Estável: Valores dentro da normalidade.";
-
-    if (history.length >= 2) {
-      const current = measurement.isolation;
-      const previous = history[history.length - 2].isolation;
-      
-      if (current < previous * 0.9) {
-        status = "Degradação";
-        statusColor = "#f44336"; // Red
-        analysis = "Tendência de Degradação: Queda significativa na resistência de isolamento detectada. Recomenda-se inspeção imediata.";
-      } else if (current < previous) {
-        status = "Atenção";
-        statusColor = "#ffeb3b"; // Yellow
-        analysis = "Atenção: Leve queda na resistência detectada. Monitorar com maior frequência.";
-      } else if (current > previous * 1.1) {
-        status = "Melhoria";
-        statusColor = "#2196f3"; // Blue
-        analysis = "Melhoria: Resistência de isolamento em níveis crescentes.";
-      }
-    }
+    // 5. Use diagnostic data from measurement (populated by client)
+    const status = measurement.status || "NORMAL";
+    const statusColor = measurement.cor || '#16a34a';
+    const trendText = measurement.tendencia || "Estavel";
+    const trendColor = measurement.tendenciaCor || '#16a34a';
+    const analysis = measurement.diagnostico || "Motor operando dentro dos padroes esperados.";
+    const recomendacoes = measurement.recomendacoes || [];
 
     // 3. Generate QuickChart URL
     const chartConfig = {
@@ -122,8 +106,13 @@ async function sendEmailReport(measurement: any) {
           <div style="padding: 30px; background-color: #ffffff;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #f0f0f0; padding-bottom: 15px;">
               <h2 style="margin: 0; font-size: 18px; color: #002045;">Dados da Medição</h2>
-              <div style="background-color: ${statusColor}; color: ${status === 'Atenção' ? '#333' : 'white'}; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase;">
-                Status: ${status}
+              <div style="display: flex; gap: 10px;">
+                <div style="background-color: ${statusColor}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase;">
+                  Status: ${status}
+                </div>
+                <div style="background-color: ${trendColor}15; color: ${trendColor}; border: 1px solid ${trendColor}30; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase;">
+                  TENDÊNCIA: ${trendText}
+                </div>
               </div>
             </div>
 
@@ -151,10 +140,20 @@ async function sendEmailReport(measurement: any) {
               <img src="${chartUrl}" alt="Tendência de Isolamento" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
             </div>
 
-            <div style="background-color: #f0f4f8; padding: 25px; border-radius: 12px; border-left: 6px solid #002045;">
-              <h3 style="margin: 0 0 10px; color: #002045; font-size: 16px;">Análise IA MotorGuard</h3>
+            <div style="background-color: #f0f4f8; padding: 25px; border-radius: 12px; border-left: 6px solid #002045; margin-bottom: 20px;">
+              <h3 style="margin: 0 0 10px; color: #002045; font-size: 16px;">Análise Técnica MotorGuard</h3>
+              <p style="margin: 0 0 10px; font-weight: bold; color: #002045; font-size: 15px;">Diagnóstico: ${measurement.condicao || 'Motor OK'}</p>
               <p style="margin: 0; font-style: italic; color: #444; line-height: 1.5; font-size: 14px;">"${analysis}"</p>
             </div>
+
+            ${recomendacoes.length > 0 ? `
+            <div style="background-color: #fff9f0; padding: 20px; border-radius: 12px; border: 1px solid #ffe8cc;">
+              <h3 style="margin: 0 0 10px; color: #e67e22; font-size: 15px;">Recomendações Técnicas</h3>
+              <ul style="margin: 0; padding-left: 20px; color: #666; font-size: 13px; line-height: 1.6;">
+                ${recomendacoes.map((rec: string) => `<li>${rec}</li>`).join('')}
+              </ul>
+            </div>
+            ` : ''}
           </div>
 
           <div style="background-color: #f8f9fa; padding: 25px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #eee;">

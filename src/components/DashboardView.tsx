@@ -244,18 +244,72 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
 
       const avgOhmic = ((reportData.ohmicAB || 0) + (reportData.ohmicAC || 0) + (reportData.ohmicBC || 0)) / 3;
 
-      // Logic Analysis
-      let statusString = "NORMAL";
-      let statusColor = [0, 128, 0]; // Green
-      if (reportData.isolation < 100) {
-        statusString = "CRITICO";
-        statusColor = [255, 0, 0]; // Red
-      } else if (reportData.isolation <= 500) {
-        statusString = "ATENCAO";
-        statusColor = [255, 165, 0]; // Orange
-      }
+      const analysis = analyzeMotorCondition({
+        isolamento: reportData.isolation,
+        ohmicAB: reportData.ohmicAB,
+        ohmicAC: reportData.ohmicAC,
+        ohmicBC: reportData.ohmicBC,
+        historicoIsolamento: [], 
+        historicoOhmicaMedia: []
+      });
+
+      const statusString = analysis.status;
+      const statusHex = analysis.cor;
+      const trendText = reportData.tendencia || analysis.tendencia;
+      const trendCor = reportData.tendenciaCor || analysis.tendenciaCor;
+      
+      // Converte HEX para RGB para jsPDF
+      const r = parseInt(statusHex.slice(1, 3), 16);
+      const g = parseInt(statusHex.slice(3, 5), 16);
+      const b = parseInt(statusHex.slice(5, 7), 16);
+
+      const tr = parseInt(trendCor.slice(1, 3), 16);
+      const tg = parseInt(trendCor.slice(3, 5), 16);
+      const tb = parseInt(trendCor.slice(5, 7), 16);
 
       let y = 20;
+      const lineHeight = 7;
+
+      const addLine = (text: string, x = 10) => {
+        if (y > 270) {
+          pdf.addPage();
+          y = 20;
+        }
+        pdf.text(normalizeText(text), x, y);
+        y += lineHeight;
+      };
+
+      const addSection = (titulo: string) => {
+        if (y > 250) {
+          pdf.addPage();
+          y = 20;
+        }
+        y += 5;
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(12);
+        pdf.setTextColor(0, 32, 69);
+        pdf.text(normalizeText(titulo), 10, y);
+        y += 6;
+        pdf.setDrawColor(0, 32, 69);
+        pdf.setLineWidth(0.5);
+        pdf.line(10, y, 200, y);
+        y += 8;
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
+        pdf.setTextColor(0, 0, 0);
+      };
+
+      const addWrappedText = (text: string, x = 10, width = 180) => {
+        const lines: string[] = pdf.splitTextToSize(normalizeText(text), width);
+        lines.forEach(line => {
+          if (y > 270) {
+            pdf.addPage();
+            y = 20;
+          }
+          pdf.text(line, x, y);
+          y += lineHeight;
+        });
+      };
 
       // CABEÇALHO
       pdf.setFont("helvetica", "bold");
@@ -276,70 +330,64 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
       pdf.line(10, y, 200, y);
 
       // DADOS DO EQUIPAMENTO
-      y += 15;
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(12);
-      pdf.setTextColor(0, 32, 69);
-      pdf.text(normalizeText("DADOS DO EQUIPAMENTO"), 10, y);
-      
-      y += 10;
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(11);
-      pdf.setTextColor(0, 0, 0);
-      pdf.text(normalizeText(`Area Operacional: ${reportData.area}`), 15, y);
-      y += 7;
-      pdf.text(normalizeText(`Equipamento: ${reportData.equipment}`), 15, y);
+      addSection("DADOS DO EQUIPAMENTO");
+      addLine(`Area Operacional: ${reportData.area}`, 15);
+      addLine(`Equipamento: ${reportData.equipment}`, 15);
 
       // MEDIÇÕES
-      y += 15;
-      pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(0, 32, 69);
-      pdf.text(normalizeText("MEDICOES TECNICAS"), 10, y);
-      
-      y += 10;
-      pdf.setFont("helvetica", "normal");
-      pdf.setTextColor(0, 0, 0);
-      pdf.text(normalizeText(`Resistencia de Isolamento: ${reportData.isolation} MegaOhm`), 15, y);
-      y += 7;
-      pdf.text(normalizeText(`Resistencia Ohmica (Media): ${avgOhmic.toFixed(2)} MicroOhm`), 15, y);
-      y += 7;
-      pdf.text(normalizeText(`Data do Registro: ${reportData.timestamp}`), 15, y);
+      addSection("MEDICOES TECNICAS");
+      addLine(`Resistencia de Isolamento: ${reportData.isolation} MegaOhm`, 15);
+      addLine(`Resistencia Ohmica (Media): ${avgOhmic.toFixed(2)} MicroOhm`, 15);
+      addLine(`Data do Registro: ${reportData.timestamp}`, 15);
 
       // ANÁLISE AUTOMÁTICA
-      y += 15;
-      pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(0, 32, 69);
-      pdf.text(normalizeText("ANALISE DE INTEGRIDADE"), 10, y);
+      addSection("ANALISE TECNICA");
       
-      y += 10;
+      // Status
       pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
-      pdf.text(normalizeText(`STATUS DO MOTOR: ${statusString}`), 15, y);
+      pdf.setTextColor(r, g, b);
+      addLine("STATUS:", 15);
+      pdf.setFont("helvetica", "normal");
+      addWrappedText(statusString, 20, 170);
+      
+      y += 2;
+      // Tendência
+      pdf.setFont("helvetica", "bold");
+      pdf.setTextColor(tr, tg, tb);
+      addLine("TENDENCIA:", 15);
+      pdf.setFont("helvetica", "normal");
+      addWrappedText(trendText, 20, 170);
+      
+      y += 2;
+      // Condição
+      pdf.setFont("helvetica", "bold");
+      pdf.setTextColor(r, g, b);
+      addLine("CONDICAO:", 15);
+      pdf.setFont("helvetica", "normal");
+      addWrappedText(analysis.condicao, 20, 170);
+      
+      y += 5;
+      // Diagnóstico detalhado
+      pdf.setFont("helvetica", "bold");
       pdf.setTextColor(0, 0, 0);
+      addLine("DIAGNOSTICO TECNICO DA CONDICAO:", 15);
+      pdf.setFont("helvetica", "normal");
+      addWrappedText(analysis.diagnostico, 20, 170);
+      
+      y += 3;
+      // Análise de tendência detalhada
+      pdf.setFont("helvetica", "bold");
+      addLine("ANALISE DE TENDENCIA DE ISOLAMENTO:", 15);
+      pdf.setFont("helvetica", "normal");
+      addWrappedText(analysis.tendenciaDiagnostico, 20, 170);
 
       // RECOMENDAÇÕES
-      y += 15;
-      pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(0, 32, 69);
-      pdf.text(normalizeText("RECOMENDACOES TECNICAS"), 10, y);
-      
-      y += 10;
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(10);
+      addSection("RECOMENDACOES TECNICAS");
       pdf.setTextColor(50, 50, 50);
       
-      if (statusString === "CRITICO") {
-        pdf.text(normalizeText("- Inspecionar isolamento imediatamente"), 15, y); y += 6;
-        pdf.text(normalizeText("- Verificar sinais de umidade ou contaminacao excessiva"), 15, y); y += 6;
-        pdf.text(normalizeText("- Programar manutencao corretiva de carater emergencial"), 15, y); y += 6;
-      } else if (statusString === "ATENCAO") {
-        pdf.text(normalizeText("- Monitorar tendencia de isolamento nas proximas medicoes"), 15, y); y += 6;
-        pdf.text(normalizeText("- Planejar limpeza tecnica e secagem dos enrolamentos"), 15, y); y += 6;
-        pdf.text(normalizeText("- Antecipar ciclo de manutencao preventiva"), 15, y); y += 6;
-      } else {
-        pdf.text(normalizeText("- Manter plano de monitoramento e manutencao preventiva padrao"), 15, y); y += 6;
-        pdf.text(normalizeText("- Realizar nova inspecao conforme cronograma operacional"), 15, y); y += 6;
-      }
+      analysis.recomendacoes.forEach(rec => {
+        addWrappedText(`- ${rec}`, 15, 175);
+      });
 
       // Adição do Gráfico de Tendência (se existir um canvas na página)
       const chartCanvas = document.querySelector("canvas");
@@ -351,15 +399,20 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
           pdf.setFont("helvetica", "bold");
           pdf.setFontSize(14);
           pdf.setTextColor(0, 32, 69);
-          pdf.text(normalizeText("GRAFICO DE TENDENCIA"), 10, y);
-          y += 10;
+          pdf.text(normalizeText("GRAFICO DE TENDENCIA"), 105, y, { align: "center" });
+          y += 15;
           pdf.addImage(chartImage, "PNG", 10, y, 190, 90);
+          y += 100;
         } catch (chartErr) {
           console.error("Erro ao incluir gráfico no PDF:", chartErr);
         }
       }
 
-      // RODAPÉ (na última página)
+      // RODAPÉ
+      if (y > 270) {
+        pdf.addPage();
+        y = 20;
+      }
       y = 280;
       pdf.setDrawColor(200, 200, 200);
       pdf.setLineWidth(0.1);
@@ -413,11 +466,11 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
 
       const analysis = analyzeMotorCondition({
         isolamento: currentIsolation,
-        ohmica: avgOhmic,
-        ip: ip || 0,
-        ia: ia || 0,
+        ohmicAB: currentOhmicAB,
+        ohmicAC: currentOhmicAC,
+        ohmicBC: currentOhmicBC,
         historicoIsolamento: historyIsolamento,
-        historicoOhmica: historyOhmica
+        historicoOhmicaMedia: historyOhmica
       });
 
       const newMeasurement = {
@@ -431,8 +484,13 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
         ...(ia !== null && { ia }),
         ...(ip !== null && { ip }),
         status: analysis.status,
+        cor: analysis.cor,
+        condicao: analysis.condicao,
+        diagnostico: analysis.diagnostico,
+        recomendacoes: analysis.recomendacoes,
         tendencia: analysis.tendencia,
-        recomendacao: analysis.recomendacao,
+        tendenciaCor: analysis.tendenciaCor,
+        tendenciaDiagnostico: analysis.tendenciaDiagnostico,
         operator: auth.currentUser?.displayName || 'Operador',
         uid: auth.currentUser?.uid,
         userIp // Adding IP to the document
@@ -673,22 +731,29 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
             <div className="space-y-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status Atual</p>
               <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${
-                  filteredLogs[0].status === 'Crítico' ? 'bg-red-500' : 
-                  filteredLogs[0].status === 'Atenção' ? 'bg-yellow-500' : 'bg-green-500'
-                }`}></div>
-                <span className="text-lg font-bold text-on-surface">{filteredLogs[0].status || 'Normal'}</span>
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: filteredLogs[0].cor || '#16a34a' }}></div>
+                <span className="text-lg font-bold text-on-surface" style={{ color: filteredLogs[0].cor || 'inherit' }}>
+                  {filteredLogs[0].status || 'NORMAL'}
+                </span>
               </div>
             </div>
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Tendência</p>
-              <span className="text-lg font-bold text-on-surface">{filteredLogs[0].tendencia || 'Estável'}</span>
+            <div className="space-y-2" style={{ width: '440px', height: '200px' }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Tendencia</p>
+              <span className="text-lg font-bold text-on-surface" style={{ color: filteredLogs[0].tendenciaCor || 'inherit' }}>
+                {filteredLogs[0].tendencia || 'Estavel'}
+              </span>
             </div>
             <div className="md:col-span-3 bg-surface-container-high p-4 rounded-xl">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Recomendação Técnica</p>
-              <p className="text-sm text-on-surface leading-relaxed">
-                {filteredLogs[0].recomendacao || 'Equipamento operando dentro dos padrões. Manter plano de manutenção preventiva.'}
-              </p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Recomendacao Tecnica</p>
+              <div className="text-sm text-on-surface leading-relaxed">
+                {filteredLogs[0].recomendacoes && filteredLogs[0].recomendacoes.length > 0 ? (
+                  <ul className="list-disc pl-5 space-y-1">
+                    {filteredLogs[0].recomendacoes.map((rec, i) => <li key={i}>{rec}</li>)}
+                  </ul>
+                ) : (
+                  <p>Equipamento operando dentro dos padroes. Manter plano de manutencao preventiva.</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -773,21 +838,22 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
               <button 
                 type="button"
                 onClick={async () => {
-                  const dataVal = (document.getElementById('input-data') as HTMLInputElement)?.value || new Date().toISOString().split('T')[0];
                   const isolamentoVal = parseFloat(isolation) || 0;
-                  const ohmicaVal = parseFloat(ohmicAB) || 0;
+                  const currentOhmicAB = parseFloat(ohmicAB) || 0;
+                  const currentOhmicAC = parseFloat(ohmicAC) || 0;
+                  const currentOhmicBC = parseFloat(ohmicBC) || 0;
                   
                   // Calculate analysis for the PDF
                   const historyIsolamento = filteredLogs.map(l => l.isolation);
                   const historyOhmica = filteredLogs.map(l => (l.ohmicAB + l.ohmicAC + l.ohmicBC) / 3);
                   
-                  const analysis = analyzeMotorCondition({
+                  analyzeMotorCondition({
                     isolamento: isolamentoVal,
-                    ohmica: ohmicaVal,
-                    ip: ip || 0,
-                    ia: ia || 0,
+                    ohmicAB: currentOhmicAB,
+                    ohmicAC: currentOhmicAC,
+                    ohmicBC: currentOhmicBC,
                     historicoIsolamento: historyIsolamento,
-                    historicoOhmica: historyOhmica
+                    historicoOhmicaMedia: historyOhmica
                   });
 
                   gerarPDFProfissional();
@@ -852,17 +918,22 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
                   <td className="px-8 py-4 text-sm">{log.operator}</td>
                   <td className="px-8 py-4">
                     <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${
-                        log.status === 'Crítico' ? 'bg-red-500' : 
-                        log.status === 'Atenção' ? 'bg-yellow-500' : 'bg-green-500'
-                      }`}></div>
-                      <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                        {log.status || 'Normal'}
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: log.cor || '#16a34a' }}></div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant" style={{ color: log.cor || 'inherit' }}>
+                        {log.status || 'NORMAL'}
                       </span>
                     </div>
                   </td>
-                  <td className="px-8 py-4">
-                    <span className="text-xs font-medium text-on-surface-variant">{log.tendencia || 'Estável'}</span>
+                  <td className="px-8 py-4" style={{ width: '300px' }}>
+                    <div className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border" 
+                         style={{ 
+                           width: '400px',
+                           backgroundColor: (log.tendenciaCor || '#16a34a') + '10', 
+                           color: log.tendenciaCor || '#16a34a',
+                           borderColor: (log.tendenciaCor || '#16a34a') + '40'
+                         }}>
+                      {log.tendencia || 'Estavel'}
+                    </div>
                   </td>
                   <td className="px-8 py-4">
                     <button

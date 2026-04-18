@@ -11,18 +11,12 @@ export default function InsulationTestCard({ onIaChange, onIpChange }: Insulatio
   const [r60s, setR60s] = useState<string>('');
   const [r1min, setR1min] = useState<string>('');
   const [r10min, setR10min] = useState<string>('');
-  const [ohmicAB, setOhmicAB] = useState<string>('');
-  const [ohmicBC, setOhmicBC] = useState<string>('');
-  const [ohmicCA, setOhmicCA] = useState<string>('');
 
   const clearFields = () => {
     setR30s('');
     setR60s('');
     setR1min('');
     setR10min('');
-    setOhmicAB('');
-    setOhmicBC('');
-    setOhmicCA('');
     onIaChange?.(null);
     onIpChange?.(null);
   };
@@ -172,45 +166,6 @@ export default function InsulationTestCard({ onIaChange, onIpChange }: Insulatio
               </div>
             </div>
           </div>
-
-          <div>
-            <h4 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-4 flex items-center gap-2">
-              <div className="w-1 h-3 bg-primary rounded-full"></div>
-              Resistência Ôhmica (Ω)
-            </h4>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Fase A-B</label>
-                <input 
-                  type="number"
-                  value={ohmicAB}
-                  onChange={(e) => setOhmicAB(e.target.value)}
-                  className="w-full bg-surface-container-high border-none rounded-lg text-sm focus:ring-2 focus:ring-primary/20 transition-all"
-                  placeholder="0.0"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Fase B-C</label>
-                <input 
-                  type="number"
-                  value={ohmicBC}
-                  onChange={(e) => setOhmicBC(e.target.value)}
-                  className="w-full bg-surface-container-high border-none rounded-lg text-sm focus:ring-2 focus:ring-primary/20 transition-all"
-                  placeholder="0.0"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Fase C-A</label>
-                <input 
-                  type="number"
-                  value={ohmicCA}
-                  onChange={(e) => setOhmicCA(e.target.value)}
-                  className="w-full bg-surface-container-high border-none rounded-lg text-sm focus:ring-2 focus:ring-primary/20 transition-all"
-                  placeholder="0.0"
-                />
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Results Section */}
@@ -264,7 +219,7 @@ export default function InsulationTestCard({ onIaChange, onIpChange }: Insulatio
         </div>
       </div>
       
-      {(parseFloat(r30s) < 0 || parseFloat(r60s) < 0 || parseFloat(r1min) < 0 || parseFloat(r10min) < 0 || parseFloat(ohmicAB) < 0 || parseFloat(ohmicBC) < 0 || parseFloat(ohmicCA) < 0) && (
+      {(parseFloat(r30s) < 0 || parseFloat(r60s) < 0 || parseFloat(r1min) < 0 || parseFloat(r10min) < 0) && (
         <div className="mt-4 p-3 bg-red-500/10 text-red-600 rounded-lg text-xs font-bold flex items-center gap-2">
           <AlertTriangle className="w-4 h-4" />
           Aviso: Valores negativos detectados. Por favor, insira apenas valores positivos.

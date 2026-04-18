@@ -53,7 +53,7 @@ export async function generateAndUploadPdf(measurement: any, docId: string) {
       // --- PDF CONTENT ---
       const primaryColor = '#002045';
       const secondaryColor = '#666666';
-      const accentColor = measurement.status === 'Crítico' ? '#f44336' : (measurement.status === 'Atenção' ? '#ff9800' : '#4caf50');
+      const accentColor = measurement.cor || '#16a34a';
 
       // Header
       doc.rect(0, 0, 612, 100).fill(primaryColor);
@@ -94,13 +94,28 @@ export async function generateAndUploadPdf(measurement: any, docId: string) {
       doc.fillColor(primaryColor).fontSize(14).text('Diagnóstico Automático', 50, 260);
       doc.moveTo(50, 280).lineTo(562, 280).stroke(primaryColor);
 
-      doc.rect(50, 295, 512, 80).fill('#f8f9fa');
+      doc.rect(50, 295, 512, 100).fill('#f8f9fa');
       doc.fillColor('black').fontSize(10);
       
-      doc.text('Status:', 70, 310).fillColor(accentColor).text(measurement.status || 'Normal', 120, 310).fillColor('black');
-      doc.text('Tendência:', 70, 330).text(measurement.tendencia || 'Estável', 130, 330);
+      doc.text('Status:', 70, 310).fillColor(accentColor).text(measurement.status || 'NORMAL', 120, 310).fillColor('black');
+      doc.text('Tendencia:', 300, 310).fillColor(measurement.tendenciaCor || '#16a34a').text(measurement.tendencia || 'Estavel', 360, 310).fillColor('black');
       
-      doc.text('Recomendação:', 70, 350).fontSize(9).text(measurement.recomendacao || 'Equipamento operando dentro dos padrões.', 150, 350, { width: 380 });
+      doc.text('Condicao:', 70, 330).text(measurement.condicao || 'Motor OK', 130, 330);
+      doc.text('Diagnostico:', 70, 350).fontSize(9).text(measurement.diagnostico || 'Equipamento operando dentro dos padroes.', 150, 350, { width: 380 });
+
+      if (measurement.tendenciaDiagnostico) {
+        doc.moveDown(0.5);
+        doc.text('Analise Tendencia:', 70, 375).text(measurement.tendenciaDiagnostico, 160, 375, { width: 370 });
+      }
+
+      if (measurement.recomendacoes && measurement.recomendacoes.length > 0) {
+        doc.moveDown(2);
+        doc.fillColor(primaryColor).fontSize(12).text('Recomendacoes Tecnicas', 70);
+        doc.fillColor('black').fontSize(9);
+        measurement.recomendacoes.forEach((rec: string, index: number) => {
+          doc.text(`- ${rec}`, 75);
+        });
+      }
 
       // Section: Trend Chart
       doc.moveDown(6);
