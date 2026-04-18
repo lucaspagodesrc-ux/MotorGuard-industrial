@@ -1,14 +1,65 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import LoginPage from './components/LoginPage';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import DashboardView from './components/DashboardView';
-import ErrorBoundary from './components/ErrorBoundary';
 import { View } from './types';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
+
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Uncaught error:', error, errorInfo);
+  }
+
+  public render(): ReactNode {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-surface p-6">
+          <div className="bg-white p-8 rounded-xl shadow-xl max-w-md w-full border border-red-100">
+            <h2 className="text-2xl font-bold text-red-600 mb-4">Algo deu errado</h2>
+            <p className="text-on-surface-variant mb-6">
+              Ocorreu um erro inesperado na aplicação. Por favor, tente recarregar a página.
+            </p>
+            <div className="bg-red-50 p-4 rounded-lg mb-6 overflow-auto max-h-40">
+              <code className="text-xs text-red-800">
+                {this.state.error?.message}
+              </code>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full bg-primary text-white py-3 rounded-lg font-bold hover:bg-primary-container transition-colors"
+            >
+              Recarregar Página
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [view, setView] = useState<View>('login');

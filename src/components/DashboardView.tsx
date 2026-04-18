@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import jsPDF from "jspdf";
 import { 
   PlusCircle, 
   Package, 
@@ -217,198 +218,164 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
     }
   }, [filteredEquipments]);
 
-  const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
-
-  const generateClientPdf = async (data: any) => {
-    // @ts-ignore
-    if (!window.jspdf || !window.html2canvas) {
-      console.error('PDF libraries not loaded');
-      alert('Bibliotecas PDF não carregadas. Verifique sua conexão com a internet.');
-      return;
-    }
-
-    // @ts-ignore
-    const { jsPDF } = window.jspdf;
-    // @ts-ignore
-    const html2canvas = window.html2canvas;
-    const doc = new jsPDF();
-
-    // Header
-    doc.setFillColor(0, 32, 69); // Dark blue
-    doc.rect(0, 0, 210, 40, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
-    doc.text("Relatorio de Medicao", 105, 18, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text("Monitoramento Tecnico de Motores Industriais", 105, 28, { align: 'center' });
-    
-    // Main Info
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("Informacoes do Equipamento", 20, 50);
-    doc.line(20, 52, 190, 52);
-    
-    doc.setFont("helvetica", "normal");
-    doc.text(`Equipamento: ${data.equipment || 'N/A'}`, 20, 60);
-    doc.text(`Data da Medicao: ${data.timestamp || 'N/A'}`, 20, 68);
-    
-    // Results
-    doc.setFont("helvetica", "bold");
-    doc.text("Resultados da Medicao", 20, 80);
-    doc.line(20, 82, 190, 82);
-    
-    doc.setFont("helvetica", "bold");
-    doc.text("Resistencia de Isolamento: ", 20, 90);
-    doc.setFont("helvetica", "normal");
-    doc.text(`${data.isolation || 'N/A'} MOhms`, 75, 90);
-    
-    const avgOhmic = data.ohmicAB !== undefined && data.ohmicAC !== undefined && data.ohmicBC !== undefined
-      ? ((data.ohmicAB + data.ohmicAC + data.ohmicBC) / 3).toFixed(1)
-      : (data.ohmicAB || 'N/A');
-    
-    doc.setFont("helvetica", "bold");
-    doc.text("Resistencia Ohmica (Media): ", 20, 98);
-    doc.setFont("helvetica", "normal");
-    doc.text(`${avgOhmic} uOhms`, 75, 98);
-    
-    if (data.ia) {
-      doc.setFont("helvetica", "bold");
-      doc.text("Indice de Absorcao (IA): ", 20, 106);
-      doc.setFont("helvetica", "normal");
-      doc.text(`${data.ia}`, 75, 106);
-    }
-    if (data.ip) {
-      doc.setFont("helvetica", "bold");
-      doc.text("Indice de Polarizacao (IP): ", 20, 114);
-      doc.setFont("helvetica", "normal");
-      doc.text(`${data.ip}`, 75, 114);
-    }
-
-    // Diagnosis
-    doc.setFont("helvetica", "bold");
-    doc.text("Diagnostico e Recomendacoes", 20, 128);
-    doc.line(20, 130, 190, 130);
-    
-    doc.setFont("helvetica", "bold");
-    doc.text("Status: ", 20, 138);
-    doc.setFont("helvetica", "normal");
-    doc.text(`${data.status || 'N/A'}`, 40, 138);
-    
-    doc.setFont("helvetica", "bold");
-    doc.text("Situacao: ", 20, 146);
-    doc.setFont("helvetica", "normal");
-    doc.text(`${data.tendencia || 'N/A'}`, 40, 146);
-    
-    const recommendation = data.recomendacao || 'N/A';
-    const splitRecommendation = doc.splitTextToSize(`Recomendacao: ${recommendation}`, 170);
-    doc.text(splitRecommendation, 20, 154);
-
-    // Chart
-    const chartElement = document.getElementById('trend-chart-container');
-    if (chartElement) {
-      try {
-        const canvas = await html2canvas(chartElement, {
-          backgroundColor: '#ffffff',
-          scale: 2
-        });
-        const imgData = canvas.toDataURL('image/png');
-        doc.addPage();
-        doc.setFont("helvetica", "bold");
-        doc.text("Grafico de Tendencia de Isolamento", 105, 20, { align: 'center' });
-        doc.addImage(imgData, 'PNG', 15, 30, 180, 90);
-      } catch (err) {
-        console.error("Erro ao capturar gráfico:", err);
-      }
-    }
-
-    // History Table
-    if (filteredLogs.length > 0) {
-      doc.addPage();
-      doc.setFont("helvetica", "bold");
-      doc.text("Historico Recente de Medicoes", 105, 20, { align: 'center' });
-      
-      doc.setFillColor(240, 242, 245);
-      doc.rect(15, 30, 180, 10, 'F');
-      doc.setFontSize(9);
-      doc.text("Data", 20, 36);
-      doc.text("Isolamento (MOhms)", 60, 36);
-      doc.text("Ohmica (uOhms)", 110, 36);
-      doc.text("Status", 160, 36);
-      
-      let yPos = 48;
-      filteredLogs.slice(0, 15).forEach((log) => {
-        if (yPos > 270) {
-          doc.addPage();
-          yPos = 30;
-        }
-        doc.setFont("helvetica", "normal");
-        doc.text(log.timestamp.split(',')[0], 20, yPos);
-        doc.text(log.isolation.toString(), 60, yPos);
-        const logAvgOhmic = ((log.ohmicAB + log.ohmicAC + log.ohmicBC) / 3).toFixed(1);
-        doc.text(logAvgOhmic, 110, yPos);
-        doc.text(log.status, 160, yPos);
-        doc.line(15, yPos + 2, 195, yPos + 2);
-        yPos += 10;
-      });
-    }
-
-    // Footer
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text(`Gerado em: ${new Date().toLocaleString()}`, 20, 285);
-      doc.text(`Página ${i} de ${pageCount}`, 190, 285, { align: 'right' });
-    }
-
-    doc.save(`relatorio_${data.equipment || 'motor'}_${new Date().getTime()}.pdf`);
-  };
-
-  const handleGeneratePdf = async (docId: string, existingUrl?: string) => {
-    if (existingUrl) {
-      window.open(existingUrl, '_blank');
-      return;
-    }
-
-    // Use client-side generation if the log is in memory
-    const log = filteredLogs.find(l => l.id === docId);
-    if (log) {
-      await generateClientPdf(log);
-      return;
-    }
-
-    setGeneratingPdfId(docId);
+  const gerarPDFProfissional = (logData: any = null) => {
     try {
-      const response = await fetch('/api/generate-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ docId }),
-      });
+      const pdf = new jsPDF();
       
-      let result;
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.indexOf("application/json") !== -1) {
-        result = await response.json();
-      } else {
-        const text = await response.text();
-        console.error("Server returned non-JSON response:", text);
-        throw new Error(`Erro no servidor: Resposta inesperada (${response.status})`);
+      const normalizeText = (text: string) => {
+        return text
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/µ/g, "Micro")
+          .replace(/Ω/g, "Ohm");
+      };
+
+      // Fallback to current state if no specific log data provided
+      const reportData = logData || {
+        area: area,
+        equipment: equipment,
+        isolation: parseFloat(isolation) || 0,
+        ohmicAB: parseFloat(ohmicAB) || 0,
+        ohmicAC: parseFloat(ohmicAC) || 0,
+        ohmicBC: parseFloat(ohmicBC) || 0,
+        timestamp: (document.getElementById('input-data') as HTMLInputElement)?.value || new Date().toLocaleString(),
+        operator: auth.currentUser?.displayName || 'Operador do Sistema'
+      };
+
+      const avgOhmic = ((reportData.ohmicAB || 0) + (reportData.ohmicAC || 0) + (reportData.ohmicBC || 0)) / 3;
+
+      // Logic Analysis
+      let statusString = "NORMAL";
+      let statusColor = [0, 128, 0]; // Green
+      if (reportData.isolation < 100) {
+        statusString = "CRITICO";
+        statusColor = [255, 0, 0]; // Red
+      } else if (reportData.isolation <= 500) {
+        statusString = "ATENCAO";
+        statusColor = [255, 165, 0]; // Orange
       }
 
-      if (result.success && result.url) {
-        window.open(result.url, '_blank');
+      let y = 20;
+
+      // CABEÇALHO
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(18);
+      pdf.setTextColor(0, 32, 69); // Dark blue
+      pdf.text(normalizeText("RELATORIO TECNICO DE MANUTENCAO"), 105, y, { align: "center" });
+      
+      y += 10;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text("MotorGuard Industrial Monitoring System", 10, y);
+      pdf.text(normalizeText(`Gerado em: ${new Date().toLocaleString()}`), 200, y, { align: "right" });
+
+      y += 5;
+      pdf.setDrawColor(0, 32, 69);
+      pdf.setLineWidth(0.5);
+      pdf.line(10, y, 200, y);
+
+      // DADOS DO EQUIPAMENTO
+      y += 15;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(12);
+      pdf.setTextColor(0, 32, 69);
+      pdf.text(normalizeText("DADOS DO EQUIPAMENTO"), 10, y);
+      
+      y += 10;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(11);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(normalizeText(`Area Operacional: ${reportData.area}`), 15, y);
+      y += 7;
+      pdf.text(normalizeText(`Equipamento: ${reportData.equipment}`), 15, y);
+
+      // MEDIÇÕES
+      y += 15;
+      pdf.setFont("helvetica", "bold");
+      pdf.setTextColor(0, 32, 69);
+      pdf.text(normalizeText("MEDICOES TECNICAS"), 10, y);
+      
+      y += 10;
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(normalizeText(`Resistencia de Isolamento: ${reportData.isolation} MegaOhm`), 15, y);
+      y += 7;
+      pdf.text(normalizeText(`Resistencia Ohmica (Media): ${avgOhmic.toFixed(2)} MicroOhm`), 15, y);
+      y += 7;
+      pdf.text(normalizeText(`Data do Registro: ${reportData.timestamp}`), 15, y);
+
+      // ANÁLISE AUTOMÁTICA
+      y += 15;
+      pdf.setFont("helvetica", "bold");
+      pdf.setTextColor(0, 32, 69);
+      pdf.text(normalizeText("ANALISE DE INTEGRIDADE"), 10, y);
+      
+      y += 10;
+      pdf.setFont("helvetica", "bold");
+      pdf.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
+      pdf.text(normalizeText(`STATUS DO MOTOR: ${statusString}`), 15, y);
+      pdf.setTextColor(0, 0, 0);
+
+      // RECOMENDAÇÕES
+      y += 15;
+      pdf.setFont("helvetica", "bold");
+      pdf.setTextColor(0, 32, 69);
+      pdf.text(normalizeText("RECOMENDACOES TECNICAS"), 10, y);
+      
+      y += 10;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      pdf.setTextColor(50, 50, 50);
+      
+      if (statusString === "CRITICO") {
+        pdf.text(normalizeText("- Inspecionar isolamento imediatamente"), 15, y); y += 6;
+        pdf.text(normalizeText("- Verificar sinais de umidade ou contaminacao excessiva"), 15, y); y += 6;
+        pdf.text(normalizeText("- Programar manutencao corretiva de carater emergencial"), 15, y); y += 6;
+      } else if (statusString === "ATENCAO") {
+        pdf.text(normalizeText("- Monitorar tendencia de isolamento nas proximas medicoes"), 15, y); y += 6;
+        pdf.text(normalizeText("- Planejar limpeza tecnica e secagem dos enrolamentos"), 15, y); y += 6;
+        pdf.text(normalizeText("- Antecipar ciclo de manutencao preventiva"), 15, y); y += 6;
       } else {
-        console.error("Failed to generate PDF:", result.error);
-        alert(`Erro ao gerar PDF: ${result.error || 'Erro desconhecido'}`);
+        pdf.text(normalizeText("- Manter plano de monitoramento e manutencao preventiva padrao"), 15, y); y += 6;
+        pdf.text(normalizeText("- Realizar nova inspecao conforme cronograma operacional"), 15, y); y += 6;
       }
+
+      // Adição do Gráfico de Tendência (se existir um canvas na página)
+      const chartCanvas = document.querySelector("canvas");
+      if (chartCanvas) {
+        try {
+          const chartImage = chartCanvas.toDataURL("image/png");
+          pdf.addPage();
+          y = 20;
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(14);
+          pdf.setTextColor(0, 32, 69);
+          pdf.text(normalizeText("GRAFICO DE TENDENCIA"), 10, y);
+          y += 10;
+          pdf.addImage(chartImage, "PNG", 10, y, 190, 90);
+        } catch (chartErr) {
+          console.error("Erro ao incluir gráfico no PDF:", chartErr);
+        }
+      }
+
+      // RODAPÉ (na última página)
+      y = 280;
+      pdf.setDrawColor(200, 200, 200);
+      pdf.setLineWidth(0.1);
+      pdf.line(10, y, 200, y);
+      y += 5;
+      pdf.setFontSize(8);
+      pdf.setTextColor(150, 150, 150);
+      pdf.text(normalizeText("Este documento e um relatorio tecnico automatizado gerado pela plataforma MotorGuard Industrial."), 105, y, { align: "center" });
+      y += 4;
+      pdf.text(normalizeText(`Responsavel Tecnico: ${reportData.operator}`), 105, y, { align: "center" });
+
+      pdf.save(`relatorio_${reportData.equipment.replace(/\s+/g, '_')}_${new Date().getTime()}.pdf`);
+
     } catch (error) {
-      console.error("Error calling PDF API:", error);
-      alert(`Erro na chamada da API de PDF: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setGeneratingPdfId(null);
+      console.error("Erro ao gerar relatório PDF profissional:", error);
+      alert("Houve um problema ao processar o relatório técnico.");
     }
   };
 
@@ -823,20 +790,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
                     historicoOhmica: historyOhmica
                   });
 
-                  await generateClientPdf({
-                    area: area,
-                    equipment: equipment,
-                    timestamp: dataVal,
-                    isolation: isolamentoVal,
-                    ohmicAB: parseFloat(ohmicAB) || 0,
-                    ohmicAC: parseFloat(ohmicAC) || 0,
-                    ohmicBC: parseFloat(ohmicBC) || 0,
-                    ia: ia,
-                    ip: ip,
-                    status: analysis.status,
-                    tendencia: analysis.tendencia,
-                    recomendacao: analysis.recomendacao
-                  });
+                  gerarPDFProfissional();
                 }}
                 className="flex items-center justify-center gap-2 px-6 bg-surface-container-highest text-on-surface py-4 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-surface-container-highest/80 transition-all active:scale-[0.98] shadow-md"
               >
@@ -914,17 +868,16 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleGeneratePdf(log.id, log.pdfUrl);
+                        gerarPDFProfissional(log);
                       }}
-                      disabled={generatingPdfId === log.id}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                         log.pdfUrl 
                           ? 'bg-primary/10 text-primary hover:bg-primary/20' 
                           : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
-                      } ${generatingPdfId === log.id ? 'opacity-50 cursor-wait' : ''}`}
+                      }`}
                     >
-                      <FileText size={14} className={generatingPdfId === log.id ? 'animate-pulse' : ''} />
-                      {generatingPdfId === log.id ? 'Gerando...' : (log.pdfUrl ? 'Ver PDF' : 'Gerar PDF')}
+                      <FileText size={14} />
+                      {log.pdfUrl ? 'Ver PDF' : 'Gerar PDF'}
                     </button>
                   </td>
                 </tr>
@@ -1077,7 +1030,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
 
   return (
     <main className="flex-1 p-8 overflow-y-auto bg-surface">
-      <div className="max-w-7xl mx-auto space-y-8">
+      <div id="relatorio" className="max-w-7xl mx-auto space-y-8 p-4 bg-surface">
         {renderContent()}
 
       </div>
