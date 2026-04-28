@@ -248,9 +248,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
 
         return correctedText
           .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .replace(/µ/g, "Micro")
-          .replace(/Ω/g, "Ohm");
+          .replace(/[\u0300-\u036f]/g, "");
       };
 
       // Helper para parsing robusto de data
@@ -435,15 +433,15 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
 
       // MEDIÇÕES
       addSection("MEDICOES TECNICAS");
-      addLine(`Resistencia de Isolamento: ${reportData.isolation} MegaOhm`, marginLeft);
+      addLine(`RESISTENCIA DE ISOLAMENTO: ${reportData.isolation} MΩ`, marginLeft);
       
-      addLine("Resistencia Ohmica:", marginLeft);
+      addLine("RESISTENCIA OHMICA:", marginLeft);
       pdf.setFont("helvetica", "normal");
-      pdf.text(`Fase R: ${reportData.ohmicAB || 0} MicroOhm`, marginLeft + 5, y);
+      pdf.text(`ÔHMICA AB: ${reportData.ohmicAB || 0} µΩ`, marginLeft + 5, y);
       y += lineHeight;
-      pdf.text(`Fase S: ${reportData.ohmicAC || 0} MicroOhm`, marginLeft + 5, y);
+      pdf.text(`ÔHMICA AC: ${reportData.ohmicAC || 0} µΩ`, marginLeft + 5, y);
       y += lineHeight;
-      pdf.text(`Fase T: ${reportData.ohmicBC || 0} MicroOhm`, marginLeft + 5, y);
+      pdf.text(`ÔHMICA BC: ${reportData.ohmicBC || 0} µΩ`, marginLeft + 5, y);
       y += lineHeight;
 
       y += 2;
@@ -669,7 +667,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
       labels: sorted.map(l => l.timestamp.split(' ')[0]),
       datasets: [
         {
-          label: 'Isolamento (mΩ)',
+          label: 'Isolamento (MΩ)',
           data: sorted.map(l => l.isolation),
           borderColor: '#002045',
           backgroundColor: 'rgba(0, 32, 69, 0.1)',
@@ -861,7 +859,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Isolamento (mΩ)</label>
+                <label className="block text-[10px] font-bold tracking-widest text-on-surface-variant mb-1.5"><span className="uppercase">Isolamento</span> (MΩ)</label>
                 <input 
                   id="input-isolamento"
                   type="number" 
@@ -873,7 +871,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Ôhmica AB (µΩ)</label>
+                <label className="block text-[10px] font-bold tracking-widest text-on-surface-variant mb-1.5"><span className="uppercase">Ôhmica AB</span> (µΩ)</label>
                 <input 
                   id="input-ohmica"
                   type="number" 
@@ -885,7 +883,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Ôhmica AC (µΩ)</label>
+                <label className="block text-[10px] font-bold tracking-widest text-on-surface-variant mb-1.5"><span className="uppercase">Ôhmica AC</span> (µΩ)</label>
                 <input 
                   type="number" 
                   step="0.1"
@@ -896,7 +894,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">Ôhmica BC (µΩ)</label>
+                <label className="block text-[10px] font-bold tracking-widest text-on-surface-variant mb-1.5"><span className="uppercase">Ôhmica BC</span> (µΩ)</label>
                 <input 
                   type="number" 
                   step="0.1"
@@ -963,10 +961,10 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
               <tr>
                 <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data/Hora</th>
                 <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Equipamento</th>
-                <th className="px-8 py-4 text-[10px] font-bold tracking-widest text-on-surface-variant">Isolamento (mΩ)</th>
-                <th className="px-8 py-4 text-[10px] font-bold tracking-widest text-on-surface-variant">AB (µΩ)</th>
-                <th className="px-8 py-4 text-[10px] font-bold tracking-widest text-on-surface-variant">AC (µΩ)</th>
-                <th className="px-8 py-4 text-[10px] font-bold tracking-widest text-on-surface-variant">BC (µΩ)</th>
+                <th className="px-8 py-4 text-[10px] font-bold tracking-widest text-on-surface-variant"><span className="uppercase">Isolamento</span> (MΩ)</th>
+                <th className="px-8 py-4 text-[10px] font-bold tracking-widest text-on-surface-variant"><span className="uppercase">AB</span> (µΩ)</th>
+                <th className="px-8 py-4 text-[10px] font-bold tracking-widest text-on-surface-variant"><span className="uppercase">AC</span> (µΩ)</th>
+                <th className="px-8 py-4 text-[10px] font-bold tracking-widest text-on-surface-variant"><span className="uppercase">BC</span> (µΩ)</th>
                 <th className="px-8 py-4 text-[10px] font-bold tracking-widest text-on-surface-variant">IA</th>
                 <th className="px-8 py-4 text-[10px] font-bold tracking-widest text-on-surface-variant">IP</th>
                 <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Operador</th>

@@ -62,7 +62,7 @@ export function analyzeMotorCondition(input: MotorAnalysisInput): MotorAnalysisR
   let isFalha = false;
   if (isolamento <= LIMIAR_FALHA_IR || isolamento === 0) {
     isFalha = true;
-    logsTendencia.push("Resistencia de isolamento criticamente baixa ou em curto (<= 1 MOhm), indicando falha grave e risco imediato.");
+    logsTendencia.push("Resistencia de isolamento criticamente baixa ou em curto (<= 1 MΩ), indicando falha grave e risco imediato.");
   }
   
   // Outras condições técnicas que indicam falha física real
