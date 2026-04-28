@@ -222,12 +222,53 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
     try {
       const pdf = new jsPDF();
       
-      const normalizeText = (text: string) => {
-        return text
+      const corrigirTextoEspacado = (texto: string) => {
+        return texto
+          // remove espaços entre letras isoladas (ex: F o i -> Foi)
+          .replace(/\b(?:[A-Za-zÀ-ÿ]\s){2,}[A-Za-zÀ-ÿ]\b/g, (match) => {
+            return match.replace(/\s/g, "");
+          })
+          // remove espaços múltiplos
+          .replace(/\s+/g, " ")
+          .trim();
+      };
+
+      const normalizeText = (text: any) => {
+        if (text === undefined || text === null) return "";
+        
+        let processedText = text;
+        
+        // REGRA ABSOLUTA: Diagnostico deve ser sempre STRING pura
+        if (Array.isArray(processedText)) {
+          processedText = processedText.join("");
+        }
+        
+        // Primeiro corrigimos o problema de espaçamento entre letras
+        const correctedText = corrigirTextoEspacado(String(processedText));
+
+        return correctedText
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
           .replace(/µ/g, "Micro")
           .replace(/Ω/g, "Ohm");
+      };
+
+      // Helper para parsing robusto de data
+      const parseDate = (dateStr: string) => {
+        if (!dateStr) return new Date();
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) return d;
+        
+        // Tenta DD/MM/YYYY HH:MM:SS
+        const match = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (match) {
+          const timeMatch = dateStr.match(/(\d{2}):(\d{2}):(\d{2})/);
+          const h = timeMatch ? parseInt(timeMatch[1]) : 0;
+          const m = timeMatch ? parseInt(timeMatch[2]) : 0;
+          const s = timeMatch ? parseInt(timeMatch[3]) : 0;
+          return new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]), h, m, s);
+        }
+        return new Date();
       };
 
       // Fallback to current state if no specific log data provided
@@ -238,25 +279,56 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
         ohmicAB: parseFloat(ohmicAB) || 0,
         ohmicAC: parseFloat(ohmicAC) || 0,
         ohmicBC: parseFloat(ohmicBC) || 0,
-        timestamp: (document.getElementById('input-data') as HTMLInputElement)?.value || new Date().toLocaleString(),
+        timestamp: (document.getElementById('input-data') as HTMLInputElement)?.value || new Date().toLocaleString('pt-BR'),
         operator: auth.currentUser?.displayName || 'Operador do Sistema'
       };
 
-      const avgOhmic = ((reportData.ohmicAB || 0) + (reportData.ohmicAC || 0) + (reportData.ohmicBC || 0)) / 3;
+      // REGRA CRÍTICA: Sempre buscar histórico completo e recalcular diagnóstico
+      const equipmentLogs = logs.filter(l => 
+        l.area === reportData.area && 
+        l.equipment === reportData.equipment
+      );
+
+      // Ordenar do mais novo para o mais antigo para encontrar o histórico do ponto atual
+      const sortedLogs = [...equipmentLogs].sort((a, b) => parseDate(b.timestamp).getTime() - parseDate(a.timestamp).getTime());
+      
+      const currentTime = parseDate(reportData.timestamp).getTime();
+      
+      // Filtrar logs estritamente anteriores ao atual
+      const pastLogs = sortedLogs.filter(l => {
+        // Se for o mesmo documento (id), ignora ele como histórico
+        if (logData && l.id === logData.id) return false;
+        // Se for o mesmo timestamp, e não tem ID (ainda não salvo), ignora
+        return parseDate(l.timestamp).getTime() < currentTime;
+      });
+
+      const historyIsolamento = pastLogs.map(l => l.isolation);
+      const historyOhmica = pastLogs.map(l => (l.ohmicAB + l.ohmicAC + l.ohmicBC) / 3);
 
       const analysis = analyzeMotorCondition({
         isolamento: reportData.isolation,
         ohmicAB: reportData.ohmicAB,
         ohmicAC: reportData.ohmicAC,
         ohmicBC: reportData.ohmicBC,
-        historicoIsolamento: [], 
-        historicoOhmicaMedia: []
+        historicoIsolamento: historyIsolamento,
+        historicoOhmicaMedia: historyOhmica
       });
 
-      const statusString = analysis.status;
+      // GARANTIR uso do diagnóstico recalculado, NUNCA do salvo
+      let diagTexto = analysis.diagnostico;
+      if (Array.isArray(diagTexto)) diagTexto = diagTexto.join("");
+      diagTexto = String(diagTexto).replace(/\s+/g, " ").trim();
+
+      const statusString = String(analysis.status).replace(/\s+/g, " ").trim();
       const statusHex = analysis.cor;
-      const trendText = reportData.tendencia || analysis.tendencia;
-      const trendCor = reportData.tendenciaCor || analysis.tendenciaCor;
+      const trendText = String(analysis.tendencia).replace(/\s+/g, " ").trim();
+      const trendCor = analysis.tendenciaCor;
+      const condTexto = String(analysis.condicao).replace(/\s+/g, " ").trim();
+      const recsList = analysis.recomendacoes;
+      const trendDiag = String(analysis.tendenciaDiagnostico).replace(/\s+/g, " ").trim();
+      
+      console.log("DIAGNOSTICO TIPO:", typeof diagTexto);
+      console.log("DIAGNOSTICO VALOR:", diagTexto);
       
       // Converte HEX para RGB para jsPDF
       const r = parseInt(statusHex.slice(1, 3), 16);
@@ -267,11 +339,17 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
       const tg = parseInt(trendCor.slice(3, 5), 16);
       const tb = parseInt(trendCor.slice(5, 7), 16);
 
-      let y = 20;
-      const lineHeight = 7;
+      const marginLeft = 15;
+      const marginRight = 15;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const maxWidth = pageWidth - marginLeft - marginRight;
 
-      const addLine = (text: string, x = 10) => {
-        if (y > 270) {
+      let y = 20;
+      const lineHeight = 6;
+
+      const addLine = (text: string, x = marginLeft) => {
+        // Quebra de página automática para linhas simples
+        if (y > 280) {
           pdf.addPage();
           y = 20;
         }
@@ -288,106 +366,101 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(12);
         pdf.setTextColor(0, 32, 69);
-        pdf.text(normalizeText(titulo), 10, y);
+        pdf.text(normalizeText(titulo), marginLeft, y);
         y += 6;
         pdf.setDrawColor(0, 32, 69);
         pdf.setLineWidth(0.5);
-        pdf.line(10, y, 200, y);
+        pdf.line(marginLeft, y, pageWidth - marginRight, y);
         y += 8;
         pdf.setFont("helvetica", "normal");
         pdf.setFontSize(10);
         pdf.setTextColor(0, 0, 0);
       };
 
-      const addWrappedText = (text: string, x = 10, width = 180) => {
-        const lines: string[] = pdf.splitTextToSize(normalizeText(text), width);
-        lines.forEach(line => {
-          if (y > 270) {
+      const addTextoBloco = (titulo: string, texto: any, titleColor: number[] = [0, 0, 0]) => {
+        // TÍTULO
+        pdf.setFont("helvetica", "bold");
+        pdf.setTextColor(titleColor[0], titleColor[1], titleColor[2]);
+        
+        // Verifica quebra de página para o título
+        if (y > 280) {
+          pdf.addPage();
+          y = 20;
+        }
+        
+        pdf.text(normalizeText(titulo), marginLeft, y);
+        y += lineHeight;
+
+        // CONTEÚDO
+        pdf.setFont("helvetica", "normal");
+        pdf.setTextColor(0, 0, 0);
+        const textContent = normalizeText(texto);
+        const linhas: string[] = pdf.splitTextToSize(textContent, maxWidth);
+
+        linhas.forEach(linha => {
+          // Quebra de página automática dentro do loop de linhas
+          if (y > 280) {
             pdf.addPage();
             y = 20;
           }
-          pdf.text(line, x, y);
+          pdf.text(linha, marginLeft, y);
           y += lineHeight;
         });
+
+        y += 4; // Espaçamento entre blocos
       };
 
       // CABEÇALHO
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(18);
       pdf.setTextColor(0, 32, 69); // Dark blue
-      pdf.text(normalizeText("RELATORIO TECNICO DE MANUTENCAO"), 105, y, { align: "center" });
+      pdf.text(normalizeText("RELATORIO TECNICO DE MANUTENCAO"), pageWidth / 2, y, { align: "center" });
       
       y += 10;
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(10);
       pdf.setTextColor(100, 100, 100);
-      pdf.text("MotorGuard Industrial Monitoring System", 10, y);
-      pdf.text(normalizeText(`Gerado em: ${new Date().toLocaleString()}`), 200, y, { align: "right" });
+      pdf.text("MotorGuard Industrial Monitoring System", marginLeft, y);
+      pdf.text(normalizeText(`Gerado em: ${new Date().toLocaleString()}`), pageWidth - marginRight, y, { align: "right" });
 
       y += 5;
       pdf.setDrawColor(0, 32, 69);
       pdf.setLineWidth(0.5);
-      pdf.line(10, y, 200, y);
+      pdf.line(marginLeft, y, pageWidth - marginRight, y);
 
       // DADOS DO EQUIPAMENTO
       addSection("DADOS DO EQUIPAMENTO");
-      addLine(`Area Operacional: ${reportData.area}`, 15);
-      addLine(`Equipamento: ${reportData.equipment}`, 15);
+      addLine(`Area Operacional: ${reportData.area}`, marginLeft);
+      addLine(`Equipamento: ${reportData.equipment}`, marginLeft);
 
       // MEDIÇÕES
       addSection("MEDICOES TECNICAS");
-      addLine(`Resistencia de Isolamento: ${reportData.isolation} MegaOhm`, 15);
-      addLine(`Resistencia Ohmica (Media): ${avgOhmic.toFixed(2)} MicroOhm`, 15);
-      addLine(`Data do Registro: ${reportData.timestamp}`, 15);
+      addLine(`Resistencia de Isolamento: ${reportData.isolation} MegaOhm`, marginLeft);
+      
+      addLine("Resistencia Ohmica:", marginLeft);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`Fase R: ${reportData.ohmicAB || 0} MicroOhm`, marginLeft + 5, y);
+      y += lineHeight;
+      pdf.text(`Fase S: ${reportData.ohmicAC || 0} MicroOhm`, marginLeft + 5, y);
+      y += lineHeight;
+      pdf.text(`Fase T: ${reportData.ohmicBC || 0} MicroOhm`, marginLeft + 5, y);
+      y += lineHeight;
+
+      y += 2;
+      addLine(`Data do Registro: ${reportData.timestamp}`, marginLeft);
 
       // ANÁLISE AUTOMÁTICA
       addSection("ANALISE TECNICA");
       
-      // Status
-      pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(r, g, b);
-      addLine("STATUS:", 15);
-      pdf.setFont("helvetica", "normal");
-      addWrappedText(statusString, 20, 170);
-      
-      y += 2;
-      // Tendência
-      pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(tr, tg, tb);
-      addLine("TENDENCIA:", 15);
-      pdf.setFont("helvetica", "normal");
-      addWrappedText(trendText, 20, 170);
-      
-      y += 2;
-      // Condição
-      pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(r, g, b);
-      addLine("CONDICAO:", 15);
-      pdf.setFont("helvetica", "normal");
-      addWrappedText(analysis.condicao, 20, 170);
-      
-      y += 5;
-      // Diagnóstico detalhado
-      pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(0, 0, 0);
-      addLine("DIAGNOSTICO TECNICO DA CONDICAO:", 15);
-      pdf.setFont("helvetica", "normal");
-      addWrappedText(analysis.diagnostico, 20, 170);
-      
-      y += 3;
-      // Análise de tendência detalhada
-      pdf.setFont("helvetica", "bold");
-      addLine("ANALISE DE TENDENCIA DE ISOLAMENTO:", 15);
-      pdf.setFont("helvetica", "normal");
-      addWrappedText(analysis.tendenciaDiagnostico, 20, 170);
+      addTextoBloco("STATUS:", statusString, [r, g, b]);
+      addTextoBloco("TENDENCIA:", trendText, [tr, tg, tb]);
+      addTextoBloco("CONDICAO:", condTexto, [r, g, b]);
+      addTextoBloco("DIAGNOSTICO TECNICO DA CONDICAO:", diagTexto);
+      addTextoBloco("ANALISE DE TENDENCIA:", trendDiag);
 
       // RECOMENDAÇÕES
       addSection("RECOMENDACOES TECNICAS");
-      pdf.setTextColor(50, 50, 50);
-      
-      analysis.recomendacoes.forEach(rec => {
-        addWrappedText(`- ${rec}`, 15, 175);
-      });
+      addTextoBloco("RECOMENDACOES:", recsList.join(" - "));
 
       // Adição do Gráfico de Tendência (se existir um canvas na página)
       const chartCanvas = document.querySelector("canvas");
@@ -458,8 +531,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
       const currentOhmicAB = parseFloat(ohmicAB);
       const currentOhmicAC = parseFloat(ohmicAC);
       const currentOhmicBC = parseFloat(ohmicBC);
-      const avgOhmic = (currentOhmicAB + currentOhmicAC + currentOhmicBC) / 3;
-
+      
       // Get history for analysis
       const historyIsolamento = filteredLogs.map(l => l.isolation);
       const historyOhmica = filteredLogs.map(l => (l.ohmicAB + l.ohmicAC + l.ohmicBC) / 3);
@@ -496,7 +568,14 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
         userIp // Adding IP to the document
       };
 
-      await addDoc(collection(db, 'measurements'), newMeasurement);
+      const docRef = await addDoc(collection(db, 'measurements'), newMeasurement);
+      
+      // Immediately generate PDF with the fresh data
+      gerarPDFProfissional({
+        ...newMeasurement,
+        id: docRef.id,
+        timestamp: new Date().toLocaleString('pt-BR')
+      });
 
       setIsolation('');
       setOhmicAB('');
@@ -571,7 +650,8 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
 
   // Trend detection logic
   const trend = useMemo(() => {
-    if (filteredLogs.length < 2) return { status: 'Estável', color: 'bg-green-400', level: 100 };
+    if (filteredLogs.length === 0) return { status: 'Sem Dados', color: 'bg-slate-400', level: 0 };
+    if (filteredLogs.length < 2) return { status: 'Primeira Medição', color: 'bg-slate-500', level: 100 };
     
     const latest = filteredLogs[0].isolation;
     const previous = filteredLogs[1].isolation;
@@ -837,26 +917,17 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
               </button>
               <button 
                 type="button"
-                onClick={async () => {
-                  const isolamentoVal = parseFloat(isolation) || 0;
-                  const currentOhmicAB = parseFloat(ohmicAB) || 0;
-                  const currentOhmicAC = parseFloat(ohmicAC) || 0;
-                  const currentOhmicBC = parseFloat(ohmicBC) || 0;
-                  
-                  // Calculate analysis for the PDF
-                  const historyIsolamento = filteredLogs.map(l => l.isolation);
-                  const historyOhmica = filteredLogs.map(l => (l.ohmicAB + l.ohmicAC + l.ohmicBC) / 3);
-                  
-                  analyzeMotorCondition({
-                    isolamento: isolamentoVal,
-                    ohmicAB: currentOhmicAB,
-                    ohmicAC: currentOhmicAC,
-                    ohmicBC: currentOhmicBC,
-                    historicoIsolamento: historyIsolamento,
-                    historicoOhmicaMedia: historyOhmica
-                  });
-
-                  gerarPDFProfissional();
+                onClick={async (e) => {
+                  // If form is not empty, save and then generate
+                  if (isolation && ohmicAB && ohmicAC && ohmicBC) {
+                    const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+                    await handleSave(fakeEvent);
+                  } else if (filteredLogs.length > 0) {
+                    // Generate based on the last record if form is empty
+                    gerarPDFProfissional(filteredLogs[0]);
+                  } else {
+                    alert("Nenhum dado capturado para gerar o relatorio.");
+                  }
                 }}
                 className="flex items-center justify-center gap-2 px-6 bg-surface-container-highest text-on-surface py-4 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-surface-container-highest/80 transition-all active:scale-[0.98] shadow-md"
               >

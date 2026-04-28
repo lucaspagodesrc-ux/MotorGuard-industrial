@@ -1,5 +1,5 @@
 
-export type MotorStatus = 'NORMAL' | 'ATENÇÃO' | 'CRÍTICO' | 'FALHA';
+export type MotorStatus = 'NORMAL' | 'ATENÇÃO' | 'CRÍTICO' | 'FALHA' | 'PRIMEIRA MEDIÇÃO';
 
 export interface MotorAnalysisInput {
   isolamento: number;
@@ -27,119 +27,163 @@ export interface MotorAnalysisResult {
 export const calcularTendencia = (valorAtual: number, valorAnterior: number) => {
   const variacao = ((valorAtual - valorAnterior) / valorAnterior) * 100;
 
-  if (variacao >= -5 && variacao <= 5) return { texto: "Estavel", cor: "#16a34a" };
-  if (variacao < -5 && variacao >= -20) return { texto: "Queda leve", cor: "#eab308" };
-  if (variacao < -20) return { texto: "Queda acentuada", cor: "#dc2626" };
-  if (variacao > 5 && variacao <= 20) return { texto: "Subida leve", cor: "#2563eb" };
-  if (variacao > 20) return { texto: "Subida acentuada", cor: "#2563eb" };
+  if (variacao >= -5 && variacao <= 0) return { texto: "Estavel", cor: "#16a34a" };
+  if (variacao < -5 && variacao > -25) return { texto: "Queda leve", cor: "#eab308" };
+  if (variacao <= -25 && variacao > -40) return { texto: "Queda acentuada", cor: "#dc2626" };
+  if (variacao <= -40) return { texto: "Queda severa", cor: "#7f1d1d" };
+  if (variacao > 0 && variacao <= 25) return { texto: "Subida leve", cor: "#2563eb" };
+  if (variacao > 25) return { texto: "Subida acentuada", cor: "#2563eb" };
   
   return { texto: "Estavel", cor: "#16a34a" };
 };
 
 /**
  * Analisa a condição do motor com base em medições técnicas detalhadas e normas industriais.
+ * Implementa lógica refinada com base no número de medições e variação percentual.
  */
 export function analyzeMotorCondition(input: MotorAnalysisInput): MotorAnalysisResult {
   const { isolamento, ohmicAB, ohmicAC, ohmicBC, historicoIsolamento, historicoOhmicaMedia } = input;
   const currentOhmicMedia = (ohmicAB + ohmicAC + ohmicBC) / 3;
+  const totalCount = 1 + historicoIsolamento.length;
 
   const logsTendencia: string[] = [];
+  let status: MotorStatus = 'NORMAL';
   
-  // 1. ANÁLISE DE ISOLAMENTO (IR)
-  let irStatus: MotorStatus = 'NORMAL';
-  if (isolamento < 10) irStatus = 'FALHA';
-  else if (isolamento < 100) irStatus = 'CRÍTICO';
-  else if (isolamento <= 500) irStatus = 'ATENÇÃO';
-
-  // 2. TENDÊNCIA DE ISOLAMENTO (Cálculo Simplificado)
-  let trendData = { texto: "Estavel", cor: "#16a34a" };
-  if (historicoIsolamento.length > 0) {
-    const lastIR = historicoIsolamento[0];
-    const variacaoIR = ((isolamento - lastIR) / lastIR) * 100;
-    trendData = calcularTendencia(isolamento, lastIR);
-    
-    if (variacaoIR < -20) {
-      logsTendencia.push("Tendencia de queda na resistencia de isolamento, indicando possivel contaminacao, umidade ou envelhecimento do isolamento.");
-    }
-  }
-
-  // 3. RESISTÊNCIA ÔHMICA (TENDÊNCIA DA MÉDIA)
-  let rdTrendStatus: MotorStatus = 'NORMAL';
-  if (historicoOhmicaMedia.length > 0) {
-    const lastOhmicMedia = historicoOhmicaMedia[0];
-    const variacaoOhmic = ((currentOhmicMedia - lastOhmicMedia) / lastOhmicMedia) * 100;
-
-    if (variacaoOhmic > 20) {
-      rdTrendStatus = 'CRÍTICO';
-      logsTendencia.push("Elevacao da resistencia ohmica sugere aquecimento excessivo, oxidacao ou mau contato.");
-    } else if (variacaoOhmic > 10) {
-      rdTrendStatus = 'ATENÇÃO';
-    }
-  }
-
-  // 4. DESBALANCEAMENTO ENTRE FASES
+  // 1. CONDIÇÃO DE FALHA (PRIORIDADE MÁXIMA - VALOR ABSOLUTO)
+  // Definido quando a resistência de isolamento está próxima de zero (curto ou massa)
+  const LIMIAR_FALHA_IR = 1; // em MΩ
+  
   const values = [ohmicAB, ohmicAC, ohmicBC];
   const maxOhmic = Math.max(...values);
   const minOhmic = Math.min(...values);
   const imbalance = ((maxOhmic - minOhmic) / currentOhmicMedia) * 100;
+  const variacaoOhmic = historicoOhmicaMedia.length > 0 ? ((currentOhmicMedia - historicoOhmicaMedia[0]) / historicoOhmicaMedia[0]) * 100 : 0;
 
-  let imbalanceStatus: MotorStatus = 'NORMAL';
-  if (imbalance > 5) {
-    imbalanceStatus = 'CRÍTICO';
-    logsTendencia.push("Desbalanceamento entre fases indica possivel assimetria no enrolamento ou falha localizada.");
-  } else if (imbalance >= 2) {
-    imbalanceStatus = 'ATENÇÃO';
+  let isFalha = false;
+  if (isolamento <= LIMIAR_FALHA_IR || isolamento === 0) {
+    isFalha = true;
+    logsTendencia.push("Resistencia de isolamento criticamente baixa ou em curto (<= 1 MOhm), indicando falha grave e risco imediato.");
+  }
+  
+  // Outras condições técnicas que indicam falha física real
+  if (imbalance > 10) { // Aumentado limiar de desbalanceamento para falha
+    isFalha = true;
+    logsTendencia.push("Desbalanceamento severo (>10%) indica falha física no enrolamento.");
   }
 
-  // DEFINIÇÃO DO STATUS FINAL
-  const severities = { 'NORMAL': 0, 'ATENÇÃO': 1, 'CRÍTICO': 2, 'FALHA': 3 };
-  const finalScore = Math.max(
-    severities[irStatus], 
-    severities[rdTrendStatus], 
-    severities[imbalanceStatus]
-  );
-  
-  const statusMap: Record<number, MotorStatus> = { 0: 'NORMAL', 1: 'ATENÇÃO', 2: 'CRÍTICO', 3: 'FALHA' };
-  const status = statusMap[finalScore];
+  if (isFalha) {
+    status = 'FALHA';
+  } else if (totalCount === 1) {
+    status = 'PRIMEIRA MEDIÇÃO';
+  } else {
+    const lastIR = historicoIsolamento[0];
+    const variacaoIR = ((isolamento - lastIR) / lastIR) * 100;
 
-  // MAPEAMENTO DE CORES E TEXTOS PADRONIZADOS
-  const config = {
+    // 🔴 1. CONDIÇÃO DE FALHA (CRÍTICO ABSOLUTO)
+    if (isolamento <= LIMIAR_FALHA_IR || isolamento === 0) {
+      status = 'FALHA';
+    } 
+    // 🔴 2. QUEDA SEVERA
+    else if (variacaoIR <= -40) {
+      status = 'CRÍTICO';
+    }
+    // 🟠 3. QUEDA ACENTUADA
+    else if (variacaoIR <= -25) {
+      status = 'CRÍTICO';
+    }
+    // 📈 4. SUBIDA -> NORMAL
+    else if (variacaoIR > 0) {
+      status = 'NORMAL';
+    }
+    // 🟡 5. ATENÇÃO (QUEDA LEVE)
+    else if (variacaoIR < 0 && variacaoIR > -25) {
+      status = 'ATENÇÃO';
+    }
+    // 🟢 6. NORMAL (ESTÁVEL)
+    else {
+      status = 'NORMAL';
+    }
+  }
+
+  // Função interna para gerar diagnóstico padronizado conforme solicitado
+  const gerarDiagnosticoTecnico = () => {
+    if (status === 'PRIMEIRA MEDIÇÃO') {
+      return "Primeira medicao registrada. Ainda nao ha dados suficientes para analise de tendencia ou diagnostico confiavel.";
+    }
+
+    const lastIR = historicoIsolamento[0] || isolamento;
+    const variacaoIR = historicoIsolamento.length > 0 ? ((isolamento - lastIR) / lastIR) * 100 : 0;
+    
+    let texto = "";
+    
+    // Lógica de texto baseada nas regras de engenharia solicitadas
+    if (status === "NORMAL" && (historicoIsolamento.length === 0 || variacaoIR >= 0)) {
+      texto = "O equipamento apresenta condicao estavel de isolamento, sem indicios de degradacao. A resistencia medida encontra-se dentro dos padroes esperados.";
+    } else if (variacaoIR > 0) {
+      texto = "Foi observada elevacao na resistencia de isolamento, indicando melhora nas condicoes dieletricas do equipamento.";
+    } else if (variacaoIR < 0 && variacaoIR > -25) {
+      texto = "Foi identificada reducao na resistencia de isolamento em relacao a medicao anterior, indicando possivel inicio de degradacao.";
+    } else if (variacaoIR <= -25 && variacaoIR > -40) {
+      texto = "Foi identificada queda acentuada na resistencia de isolamento, indicando degradacao relevante do sistema isolante.";
+    } else if (variacaoIR <= -40) {
+      texto = "Foi identificada queda severa na resistencia de isolamento, indicando alto nivel de degradacao e risco elevado de falha.";
+    } else if (status === 'FALHA') {
+      texto = "A resistencia de isolamento encontra-se em nivel critico ou proximo de zero, indicando falha no sistema isolante.";
+    } else {
+      texto = "Condicao nao classificada.";
+    }
+
+    // Complemento de desbalanceamento ohmico (Threshold técnico > 5%)
+    if (imbalance > 5) {
+      texto += " Foi identificado desbalanceamento entre as resistencias ohmicas das fases, indicando possivel assimetria nos enrolamentos.";
+    }
+
+    return texto;
+  };
+
+  const diagTecnico = gerarDiagnosticoTecnico();
+
+  // MAPEAMENTO DE RECOMENDAÇÕES E CORES
+  const configResult = {
+    'PRIMEIRA MEDIÇÃO': {
+      cor: "#64748b",
+      condicao: "Aguardando historico",
+      recs: ["Realizar novas medicoes periodicas", "Acompanhar evolucao dos parametros", "Evitar conclusoes com base em um unico ponto"]
+    },
     'NORMAL': {
       cor: '#16a34a',
-      condicao: "Motor em condicao operacional normal",
-      diagnostico: "Motor operando dentro dos padroes esperados. Nao ha indicios de degradacao eletrica ou anomalias nas medicoes.",
-      recs: ["Manter plano de manutencao preventiva", "Registrar medicoes periodicas"]
+      condicao: "Condicao operacional estavel",
+      recs: ["Manter plano de manutencao preventiva", "Registrar tendencia nas proximas medicoes"]
     },
     'ATENÇÃO': {
       cor: '#eab308',
-      condicao: "Motor com indicios de degradacao",
-      diagnostico: "Identificada variacao nos parametros eletricos. Tendencia indica possivel inicio de degradacao. Recomenda-se acompanhamento continuo.",
-      recs: ["Aumentar frequencia de monitoramento", "Programar inspecao detalhada", "Avaliar condicoes ambientais (umidade, sujeira)"]
+      condicao: "Inicio de degradacao identificado",
+      recs: ["Aumentar frequencia de monitoramento", "Verificar condicoes ambientais (umidade/sujeira)", "Limpar terminais e repetir medicao"]
     },
     'CRÍTICO': {
-      cor: '#f97316',
-      condicao: "Motor em condicao critica",
-      diagnostico: "Parametros eletricos fora da faixa aceitavel. Evidencia de degradacao significativa do isolamento e/ou anomalias resistivas. Risco elevado de falha operacional.",
-      recs: ["Programar parada controlada", "Realizar ensaios complementares (megger, surge test)", "Inspecionar conexoes e isolamento"]
+      cor: '#dc2626',
+      condicao: "Degradacao relevante do isolamento",
+      recs: ["Programar parada para inspecao detalhada", "Avaliar secagem do enrolamento", "Realizar testes complementares"]
     },
     'FALHA': {
-      cor: '#dc2626',
-      condicao: "Motor com falha eletrica grave (possivel motor queimado)",
-      diagnostico: "Falha eletrica detectada. Isolamento comprometido e/ou desbalanceamento severo. Alta probabilidade de dano no enrolamento do motor.",
-      recs: ["Retirar motor de operacao imediatamente", "Encaminhar para analise em oficina especializada", "Avaliar rebobinamento ou substituicao"]
+      cor: '#7f1d1d',
+      condicao: "Falha iminente ou curto-circuito",
+      recs: ["Nao energizar o equipamento", "Isolar motor para manutencao corretiva", "Inspecionar cabos e caixa de ligacao"]
     }
   };
 
-  const finalConfig = config[status];
+  const currentCfg = configResult[status as keyof typeof configResult];
+  const lastIR_val = historicoIsolamento[0] || isolamento;
+  const variacaoIR_val = historicoIsolamento.length > 0 ? ((isolamento - lastIR_val) / lastIR_val) * 100 : 0;
 
   return {
     status,
-    cor: finalConfig.cor,
-    condicao: finalConfig.condicao,
-    diagnostico: finalConfig.diagnostico,
-    recomendacoes: finalConfig.recs,
-    tendencia: trendData.texto,
-    tendenciaCor: trendData.cor,
-    tendenciaDiagnostico: logsTendencia.length > 0 ? logsTendencia.join(' ') : "Parametros dentro da normalidade estatistica e operacional."
+    cor: currentCfg.cor,
+    condicao: currentCfg.condicao,
+    diagnostico: diagTecnico,
+    recomendacoes: currentCfg.recs,
+    tendencia: variacaoIR_val > 0 ? (variacaoIR_val > 25 ? "Subida acentuada" : "Subida leve") : (historicoIsolamento.length > 0 ? calcularTendencia(isolamento, lastIR_val).texto : "Estavel"),
+    tendenciaCor: variacaoIR_val > 0 ? "#2563eb" : (historicoIsolamento.length > 0 ? calcularTendencia(isolamento, lastIR_val).cor : "#16a34a"),
+    tendenciaDiagnostico: status === 'PRIMEIRA MEDIÇÃO' ? "Aguardando historico para gerar analise de tendencia." : `Variacao de ${variacaoIR_val.toFixed(1)}% em relacao ao ponto anterior.`
   };
 }
